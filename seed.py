@@ -17,13 +17,29 @@ class SeedNode:
 
     # def peer_list(self):
 
+    def handle_peer_connection(self,conne,addr):
+        print(f"peer connected from {addr}")
+        connection, address = server_socket.accept()
+        # print("[INFO] Connection established with:", address)
+
+        # print("[INFO] Receiving message from client...")
+        # received_message = connection.recv(buffer_size).decode('utf-8')
+        # print("Message received from client:", received_message)
+
+        # uppercase_message = received_message.upper().encode('utf-8')
+        # reverse_message = received_message[::-1].encode('utf-8')
+
+        # print("[INFO] Sending responses to client...")
+        # connection.send(uppercase_message)
+        conne.send("hii")
+        conne.close()
+
 
     def start(self):
         print(f"Seed Node running on {self.ip}:{self.port}")
         while True:
-            connection, addr = self.server_socket.accept()
-            print(addr)
-            print(connection)
+            conne, addr = self.server_socket.accept()
+            threading.Thread(target=self.handle_peer_connection,args=(conne,addr)).start()
 
 
 # https://realpython.com/intro-to-python-threading/
