@@ -2,119 +2,142 @@ import socket
 import threading
 import json
 import time
+import logging
 import random
-import hashlib
+import math
+
+# Configure logging
+logging.basicConfig(
+    filename="peer.log",
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+)
+
+CONFIG_FILE = "D:\IITJ\Academics\TY S2\Computer Networks\Assignment1\Computer_network\config.txt"
 
 class PeerNode:
-    def __init__(self, ip, port, seeds):
+    def __init__(self, ip, port):
         self.ip = ip
         self.port = port
-        self.seeds = seeds  # List of (ip, port) tuples
-        self.connected_peers = []  # List of (ip, port) tuples
-        self.message_list = {}  # {hash: [sent_to_peers]}
+        self.seed_nodes = self.read_seed_nodes()
+        self.peers = set()
         self.lock = threading.Lock()
+        self.running = True
 
-    def register_with_seeds(self):
-        for seed_ip, seed_port in self.seeds:
+    def read_seed_nodes(self):
+        """Read seed nodes from config.txt and return a list of (IP, Port) tuples."""
+        seed_nodes = []
+        try:
+            with open(CONFIG_FILE, "r") as file:
+                for line in file:
+                    line = line.strip()
+                    if line:
+                        ip, port = line.split(":")
+                        seed_nodes.append((ip, int(port)))
+        except Exception as e:
+            logging.error(f"Error reading {CONFIG_FILE}: {e}")
+        
+        if not seed_nodes:
+            logging.error("No seed nodes available in config.txt.")
+        
+        return seed_nodes
+
+    def select_seed_nodes(self):
+        """Select floor(n/2) + 1 random seed nodes."""
+        n = len(self.seed_nodes)
+        if n == 0:
+            return []
+        k = math.floor(n / 2) + 1
+        return random.sample(self.seed_nodes, k)
+
+    def register_with_seed(self):
+        """Register this peer with selected seed nodes."""
+        selected_nodes = self.select_seed_nodes()
+        for seed_ip, seed_port in selected_nodes:
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sock.connect((seed_ip, seed_port))
-                request = json.dumps({"type": "register", "ip": self.ip, "port": self.port})
-                sock.send(request.encode())
+                sock.send(json.dumps({"type": "register", "ip": self.ip, "port": self.port}).encode())
                 response = json.loads(sock.recv(1024).decode())
-                if response["status"] == "success":
-                    print(f"Registered with seed: {seed_ip}:{seed_port}")
+
+                if response.get("status") == "success":
+                    logging.info(f"Registered with seed node {seed_ip}:{seed_port}")
                 sock.close()
             except Exception as e:
-                print(f"Failed to register with seed {seed_ip}:{seed_port}: {e}")
+                logging.error(f"Failed to register with seed node {seed_ip}:{seed_port}: {e}")
 
-    def get_peers_from_seeds(self):
-        all_peers = set()
-        for seed_ip, seed_port in self.seeds:
+    def fetch_peers(self):
+        """Fetch a list of peers from selected seed nodes."""
+        selected_nodes = self.select_seed_nodes()
+        for seed_ip, seed_port in selected_nodes:
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sock.connect((seed_ip, seed_port))
-                request = json.dumps({"type": "get_peers"})
-                sock.send(request.encode())
+                sock.send(json.dumps({"type": "get_peers"}).encode())
                 response = json.loads(sock.recv(1024).decode())
-                all_peers.update(tuple(peer) for peer in response["peers"])
                 sock.close()
+
+                with self.lock:
+                    for peer in response.get("peers", []):
+                        if peer != (self.ip, self.port):
+                            self.peers.add(tuple(peer))
+
+                logging.info(f"Received peer list from {seed_ip}:{seed_port} - {self.peers}")
             except Exception as e:
-                print(f"Failed to get peers from seed {seed_ip}:{seed_port}: {e}")
-        return list(all_peers)
+                logging.error(f"Failed to fetch peers from {seed_ip}:{seed_port}: {e}")
 
-    def connect_to_peers(self, peers):
-        for peer_ip, peer_port in peers:
-            if (peer_ip, peer_port) != (self.ip, self.port):
-                try:
-                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    sock.connect((peer_ip, peer_port))
-                    self.connected_peers.append((peer_ip, peer_port))
-                    print(f"Connected to peer: {peer_ip}:{peer_port}")
-                except Exception as e:
-                    print(f"Failed to connect to peer {peer_ip}:{peer_port}: {e}")
+    def handle_peer(self, client_socket, address):
+        """Handle incoming peer connections and messages."""
+        try:
+            data = json.loads(client_socket.recv(1024).decode())
+            if data["type"] == "gossip":
+                logging.info(f"Received message from {address}: {data['message']}")
+        except Exception as e:
+            logging.error(f"Error handling peer {address}: {e}")
+        finally:
+            client_socket.close()
 
-    def start(self):
-        self.register_with_seeds()
-        peers = self.get_peers_from_seeds()
-        self.connect_to_peers(peers)
+    def start_listener(self):
+        """Start listening for incoming peer messages."""
+        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server.bind((self.ip, self.port))
+        server.listen(5)
+        logging.info(f"Peer node started at {self.ip}:{self.port}")
 
-        threading.Thread(target=self.gossip_messages).start()
-        threading.Thread(target=self.check_liveness).start()
-
-    def gossip_messages(self):
-        message_count = 0
-        while message_count < 10:
-            time.sleep(5)
-            message = f"{time.time()}:{self.ip}:{message_count}"
-            self.broadcast_message(message)
-            message_count += 1
+        while self.running:
+            try:
+                client_socket, addr = server.accept()
+                threading.Thread(target=self.handle_peer, args=(client_socket, addr)).start()
+            except Exception as e:
+                logging.error(f"Listener error: {e}")
 
     def broadcast_message(self, message):
-        message_hash = hashlib.sha256(message.encode()).hexdigest()
+        """Broadcast a gossip message to all connected peers."""
         with self.lock:
-            if message_hash not in self.message_list:
-                self.message_list[message_hash] = []
-            for peer_ip, peer_port in self.connected_peers:
-                if (peer_ip, peer_port) not in self.message_list[message_hash]:
-                    try:
-                        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                        sock.connect((peer_ip, peer_port))
-                        sock.send(message.encode())
-                        self.message_list[message_hash].append((peer_ip, peer_port))
-                        sock.close()
-                    except Exception as e:
-                        print(f"Failed to send message to {peer_ip}:{peer_port}: {e}")
+            peers_copy = list(self.peers)
 
-    def check_liveness(self):
-        while True:
-            time.sleep(13)
-            dead_peers = []
-            for peer_ip, peer_port in self.connected_peers:
-                try:
-                    # Use system ping utility
-                    response = os.system(f"ping -c 1 {peer_ip}")
-                    if response != 0:
-                        dead_peers.append((peer_ip, peer_port))
-                except Exception as e:
-                    print(f"Failed to ping {peer_ip}:{e}")
-
-            for dead_ip, dead_port in dead_peers:
-                self.report_dead_node(dead_ip, dead_port)
-                self.connected_peers.remove((dead_ip, dead_port))
-
-    def report_dead_node(self, dead_ip, dead_port):
-        for seed_ip, seed_port in self.seeds:
+        for peer_ip, peer_port in peers_copy:
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.connect((seed_ip, seed_port))
-                request = json.dumps({"type": "dead_node", "dead_ip": dead_ip, "dead_port": dead_port})
-                sock.send(request.encode())
+                sock.connect((peer_ip, peer_port))
+                sock.send(json.dumps({"type": "gossip", "message": message}).encode())
                 sock.close()
+                logging.info(f"Sent message to {peer_ip}:{peer_port}: {message}")
             except Exception as e:
-                print(f"Failed to report dead node to seed {seed_ip}:{seed_port}: {e}")
+                logging.error(f"Failed to send message to {peer_ip}:{peer_port}: {e}")
+
+    def start(self):
+        """Start the peer node."""
+        threading.Thread(target=self.start_listener, daemon=True).start()
+        self.register_with_seed()
+        self.fetch_peers()
+
+        while self.running:
+            message = f"{time.time()}:{self.ip}:{self.port}"
+            logging.info(f"Broadcasting message: {message}")
+            self.broadcast_message(message)
+            time.sleep(10)
 
 if __name__ == "__main__":
-    seeds = [("127.0.0.1", 5001), ("127.0.0.1", 5002), ("127.0.0.1", 5003)]
-    peer = PeerNode("127.0.0.1", 6001, seeds)
+    peer = PeerNode("127.0.0.4", 6004)
     peer.start()
