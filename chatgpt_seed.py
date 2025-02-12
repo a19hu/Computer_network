@@ -2,14 +2,14 @@ import socket
 import threading
 import json
 import time
+import sys
 
-LOG_FILE = "seed.log"
 
 class SeedNode:
     def __init__(self, ip, port):
         self.ip = ip
         self.port = port
-        self.peer_list = []  # List of (ip, port) tuples
+        self.peer_list = []
         self.lock = threading.Lock()
 
     def log_message(self, message):
@@ -17,8 +17,8 @@ class SeedNode:
         timestamp = time.strftime("[%Y-%m-%d %H:%M:%S]")
         log_entry = f"{timestamp} {message}"
         print(log_entry)
-        with open(LOG_FILE, "a") as log_file:
-            log_file.write(log_entry + "\n")
+        with open('seed.log', "a") as file:
+            file.write(log_entry + "\n")
 
     def start(self):
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -61,7 +61,7 @@ class SeedNode:
                 dead_port = request["dead_port"]
                 with self.lock:
                     self.peer_list = [(ip, port) for ip, port in self.peer_list if ip != dead_ip or port != dead_port]
-                self.log_message(f"Removed dead node: {dead_ip}:{dead_port}")
+                self.log_message(f"Removed dead node: {dead_ip}:{dead_port}")   
 
         except Exception as e:
             self.log_message(f"Error handling client: {e}")
@@ -71,14 +71,20 @@ class SeedNode:
         #     self.log_message("Closed connection with client.")
 
 if __name__ == "__main__":
-    seed_nodes = [
-        SeedNode('127.0.0.1', 5000),
-        SeedNode('127.0.0.1', 5001),
-        SeedNode('127.0.0.1', 5002),
-        SeedNode('127.0.0.1', 5003),
-        SeedNode('127.0.0.1', 5004)
-    ]
-    
-    for seed in seed_nodes:
-        seed_thread = threading.Thread(target=seed.start)
-        seed_thread.start()
+    # seed_nodes = []
+    ip,port =sys.argv[1].split(':')
+    port = int(port)
+
+    with open('config.txt', 'r+') as file:
+        lines = file.readlines()
+        config = ip + ':' + str(port) + '\n'
+        if config not in lines:
+            file.seek(0, 2)
+            file.write(config)
+
+    # seed_nodes.append(SeedNode(ip, int(port)))
+    SeedNode(ip,port).start()
+
+    # for seed in seed_nodes:
+    #     seed_thread = threading.Thread(target=seed.start)
+    #     seed_thread.start()

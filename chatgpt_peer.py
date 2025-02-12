@@ -5,6 +5,7 @@ import time
 import logging
 import random
 import math
+import sys
 
 # Configure logging
 logging.basicConfig(
@@ -13,7 +14,7 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
 
-CONFIG_FILE = "D:\IITJ\Academics\TY S2\Computer Networks\Assignment1\Computer_network\config.txt"
+CONFIG_FILE = "./config.txt"
 
 class PeerNode:
     def __init__(self, ip, port):
@@ -36,10 +37,10 @@ class PeerNode:
                         seed_nodes.append((ip, int(port)))
         except Exception as e:
             logging.error(f"Error reading {CONFIG_FILE}: {e}")
-        
+
         if not seed_nodes:
             logging.error("No seed nodes available in config.txt.")
-        
+
         return seed_nodes
 
     def select_seed_nodes(self):
@@ -48,17 +49,20 @@ class PeerNode:
         if n == 0:
             return []
         k = math.floor(n / 2) + 1
+        print(k)
         return random.sample(self.seed_nodes, k)
 
     def register_with_seed(self):
         """Register this peer with selected seed nodes."""
         selected_nodes = self.select_seed_nodes()
+        print(selected_nodes)
         for seed_ip, seed_port in selected_nodes:
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sock.connect((seed_ip, seed_port))
                 sock.send(json.dumps({"type": "register", "ip": self.ip, "port": self.port}).encode())
                 response = json.loads(sock.recv(1024).decode())
+                print(response)
 
                 if response.get("status") == "success":
                     logging.info(f"Registered with seed node {seed_ip}:{seed_port}")
@@ -115,15 +119,22 @@ class PeerNode:
         """Broadcast a gossip message to all connected peers."""
         with self.lock:
             peers_copy = list(self.peers)
+            print(peers_copy)
 
         for peer_ip, peer_port in peers_copy:
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(5)  # Set a timeout of 5 seconds
                 sock.connect((peer_ip, peer_port))
                 sock.send(json.dumps({"type": "gossip", "message": message}).encode())
                 sock.close()
                 logging.info(f"Sent message to {peer_ip}:{peer_port}: {message}")
             except Exception as e:
+                logging.error(f"Failed to send message to {peer_ip}:{peer_port}: {e}")
+                with self.lock:
+                    # Remove the dead peer from the set
+                    self.peers.discard((peer_ip, peer_port))
+                logging.info(f"Removed dead peer {peer_ip}:{peer_port}")
                 logging.error(f"Failed to send message to {peer_ip}:{peer_port}: {e}")
 
     def start(self):
@@ -139,5 +150,6 @@ class PeerNode:
             time.sleep(10)
 
 if __name__ == "__main__":
-    peer = PeerNode("127.0.0.4", 6004)
-    peer.start()
+    ip,port =sys.argv[1].split(':')
+    port = int(port)
+    PeerNode(ip,port).start()
