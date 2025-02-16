@@ -12,8 +12,8 @@ class SeedNode:
         self.lock = threading.Lock()
         self.output_file = "output.txt"
 
+# Function to log and write to output.txt and screen
     def log_message(self, message):
-        """Logs messages to both console, seed.log, and output.txt"""
         timestamp = time.strftime("[%Y-%m-%d %H:%M:%S]")
         log_entry = f"{timestamp} {message}"
         print(log_entry)
@@ -22,6 +22,7 @@ class SeedNode:
         with open(self.output_file, "a") as out_file:
             out_file.write(log_entry + "\n")
 
+# Initialization function to start a seed node
     def start(self):
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server_socket.bind((self.ip, self.port))
@@ -33,6 +34,7 @@ class SeedNode:
             self.log_message(f"Connection from {addr[0]}:{addr[1]}")
             threading.Thread(target=self.handle_client, args=(client_socket,)).start()
 
+# Function to listen to incoming messages and process them correctly
     def handle_client(self, client_socket):
         try:
             data = client_socket.recv(1024).decode()
@@ -68,6 +70,7 @@ class SeedNode:
         except Exception as e:
             self.log_message(f"Error handling client: {e}")
 
+# Main function:
 if __name__ == "__main__":
     ip, port = sys.argv[1].split(':')
     port = int(port)
