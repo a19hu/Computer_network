@@ -45,7 +45,7 @@ class PeerNode:
         server.bind((self.ip, self.port))
         server.listen(5)
         self.log_message(f"Peer node started at {self.ip}:{self.port}")
-        
+
         while self.running:
             try:
                 client_socket, addr = server.accept()
@@ -53,7 +53,7 @@ class PeerNode:
             except Exception as e:
                 if self.running:
                     self.log_message(f"Listener error: {e}")
-    
+
     def read_seed_nodes(self):
         """Read seed nodes from config.txt and return a list of (IP, Port) tuples."""
         seed_nodes = []
@@ -91,7 +91,7 @@ class PeerNode:
             return []
         k = math.floor(n / 2) + 1
         return random.sample(self.seed_nodes, k)
-    
+
     def ping_peers(self):
         """Periodically ping connected peers to check liveness."""
         while self.running:
@@ -147,12 +147,12 @@ class PeerNode:
         """Select peers using a power-law distribution."""
         if not peers:
             return []
-        
+
         degrees = [i + 1 for i in range(len(peers))]
         probabilities = [d ** -alpha for d in degrees]
         total = sum(probabilities)
         probabilities = [p / total for p in probabilities]
-        
+
         num_connections = min(len(peers), 5)  # Connect to up to 5 peers
         selected_indices = random.choices(range(len(peers)), weights=probabilities, k=num_connections)
         return [peers[i] for i in selected_indices]
@@ -166,20 +166,20 @@ class PeerNode:
                 with self.lock:
                     self.peers.add((sender_ip, sender_port))
                 self.log_message(f"Updated peer list with new peer: {sender_ip}:{sender_port}")
-            
+
             elif data["type"] == "gossip":
                 msg_hash = hash(data["message"])
                 if msg_hash not in self.message_log:
                     self.message_log.add(msg_hash)
                     self.log_message(f"Received new message from {address}: {data['message']}")
                     self.broadcast_message(data["message"], exclude=address)
-            
-            elif data["type"] == "ping":  # ✅ Add this to respond to pings
+
+            elif data["type"] == "ping":  #  Add this to respond to pings
                 client_socket.send(json.dumps({"type": "pong"}).encode())
-        
+
         except Exception as e:
             self.log_message(f"Error handling peer {address}: {e}")
-        
+
         finally:
             client_socket.close()
 
@@ -254,7 +254,7 @@ class PeerNode:
     #     """Graceful shutdown procedure."""
     #     self.running = False
     #     self.log_message("Initiating shutdown sequence...")
-        
+
     #     # Deregister from seeds
     #     for seed_ip, seed_port in self.registered_seeds:
     #         try:
@@ -265,7 +265,7 @@ class PeerNode:
     #             self.log_message(f"Deregistered from seed {seed_ip}:{seed_port}")
     #         except Exception as e:
     #             self.log_message(f"Failed to deregister from seed {seed_ip}:{seed_port}: {e}")
-        
+
     #     # Close all connections
     #     with self.lock:
     #         self.peers.clear()
