@@ -15,7 +15,7 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - [%(peer_ip)s:%(peer_port)s] - %(message)s",
 )
 CONFIG_FILE = "./config.txt"
-OUTPUT_FILE = "output.txt"
+OUTPUT_FILE = "outputfile.txt"
 
 class PeerNode:
     def __init__(self, ip, port):

@@ -10,7 +10,7 @@ class SeedNode:
         self.port = port
         self.peer_list = []
         self.lock = threading.Lock()
-        self.output_file = "output.txt"
+        self.output_file = "outputfile.txt"
 
 # Function to log and write to output.txt and screen
     def log_message(self, message):
