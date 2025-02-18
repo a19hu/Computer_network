@@ -29,11 +29,11 @@ class PeerNetwork:
         total = sum(probabilities)
         probabilities = [p / total for p in probabilities]  # Normalize probabilities
 
-        num_connections = min(1, len(peers))  # Connect to at most 2 peers
+        num_connections = min(1, len(peers))  # Connect to at most 1 peer
         selected_indices = random.choices(range(len(peers)), weights=probabilities, k=num_connections)
         return [peers[i] for i in selected_indices]
 
-    def simulate(self, num_peers=12):
+    def simulate(self, num_peers):
         """Simulate the network growth."""
         for _ in range(num_peers):
             self.add_peer()
