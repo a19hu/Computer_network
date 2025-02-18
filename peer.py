@@ -108,7 +108,7 @@ class PeerNode:
         total = sum(probabilities)
         probabilities = [p / total for p in probabilities]
         
-        num_connections = (len(peers)//2) + 1  # Connect to (no. of peers)/2 + 1 peers to ensure connectivity
+        num_connections = min(len(peers),1)
         selected_indices = random.choices(range(len(peers)), weights=probabilities, k=num_connections)
         return [peers[i] for i in selected_indices]
 
